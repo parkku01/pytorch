@@ -1,6 +1,7 @@
 import torch
 import torchtext
 import numpy as np
+import config
 from sequence_labeling.bilstm.bilstm import BiLSTM
 from utils.news_data_helper import DataHelper
 
@@ -62,37 +63,80 @@ def training(parameters):
                 if e >= parameters['warmup_epoch']:
                     if val_record[-1]['loss'] <= max_loss:
                         save(m=model, info={'step': step, 'epoch': e, 'train_loss': np.mean(losses),
-                                            'val_loss': val_record[-1]['loss']})
+                                            'val_loss': val_record[-1]['loss']}, path=parameters['model_path'])
                         max_loss = val_record[-1]['loss']
                         no_improve_in_previous_epoch = False
 
-def save(m, info):
-    torch.save(info, 'best_model.info')
-    torch.save(m, 'best_model.m')
+def prediction(parameters):
+    model, m_info = load(parameters['model_path'])
+    model.eval()
+    model.zero_grad()
+    test_iter = parameters['test_iter']
+    test_iter.init_epoch()
+    total = 0
+    correct = 0
+    for test_batch in iter(test_iter):
+        test_x = test_batch.input.cuda()
+        true = test_batch.target.data.numpy().tolist()
+        pred = model.forward(test_x).transpose(1,2)
+        pred = torch.argmax(pred, -1).cpu().data.numpy().tolist()
+        for minibatch_p, minibatch_t in zip(pred, true):
+            for p, t in zip(minibatch_p, minibatch_t):
+                if t == parameters['data_helper'].target2idx['[CLS]']:
+                    continue
+                if p == t:
+                    correct += 1
+                total += 1
+
+    print('accuracy:', correct/total, correct, total)
+
+def prediction_demo(parameters):
+    model, m_info = load(parameters['model_path'])
+    model.eval()
+    model.zero_grad()
+    test_iter = parameters['test_iter']
+    test_iter.init_epoch()
+    dh = parameters['data_helper']
+    for test_batch in iter(test_iter):
+        x = test_batch.input.cuda()
+        pred = model.forward(x).transpose(1,2)
+        pred = torch.argmax(pred, -1).cpu().data.numpy().tolist()
+        text_x = x.cpu().data.numpy().tolist()
+
+        result = dh.tokens2text(text_x, pred)
+        print(result)
 
 
-def load():
-    m = torch.load('best_model.m')
-    info = torch.load('best_model.info')
+def save(m, info, path):
+    torch.save(info, path+'best_model.info')
+    torch.save(m, path+'best_model.m')
+
+
+def load(path):
+    m = torch.load(path+'best_model.m')
+    info = torch.load(path+'best_model.info')
     return m, info
 
 
 if __name__ == '__main__':
     dh = DataHelper()
     parameters = {
+        'data_helper': dh,
         'embedding_dim': 100,
         'tokenizer': dh.tokenizer,
-        'epoch': 10,
+        'epoch': 20,
         'model': None,
         'eval_every': 2,
         'loss_func': None,
         'optimizer': None,
         'train_iter': None,
         'val_iter': None,
+        'test_iter': None,
         'early_stop': 1,
         'warmup_epoch': 2,
         'batch_size': 2,
-        'learning_rate': 1e-3
+        'learning_rate': 1e-3,
+        'model_path': config.SEQ_LABEL_DIR+'/bilstm/models/news_sample/'
     }
 
     parameters['train_iter'] = torchtext.data.BucketIterator(dataset=dh.train_data,
@@ -105,10 +149,17 @@ if __name__ == '__main__':
                                              sort_key=lambda x: x.text.__len__(),
                                              train=False,
                                              sort=False)
+    parameters['test_iter'] = torchtext.data.BucketIterator(dataset=dh.test_data,
+                                                           batch_size=1,
+                                                           sort_key=lambda x: x.text.__len__(),
+                                                           train=False,
+                                                           sort=False)
     model = BiLSTM(embedding=None, parameters=parameters, lstm_layer=2, padding_idx=parameters['tokenizer'].vocab['[PAD]'], output_dim=len(dh.target2idx), hidden_dim=128).cuda()
 
     # loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([pos_w]).cuda())
     parameters['loss_func'] = torch.nn.CrossEntropyLoss(ignore_index=parameters['tokenizer'].vocab['[PAD]'])
     parameters['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=parameters['learning_rate'])
     parameters['model'] = model
-    training(parameters)
+    # training(parameters)
+    prediction(parameters)
+    # prediction_demo(parameters)
