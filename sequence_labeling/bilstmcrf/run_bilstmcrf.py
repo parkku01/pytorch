@@ -18,7 +18,6 @@ def training(parameters):
     model = parameters['model']
     train_iter = parameters['train_iter']
     val_iter = parameters['val_iter']
-    loss_function = parameters['loss_func']
     optimizer = parameters['optimizer']
 
     for e in range(parameters['epoch']):
@@ -157,7 +156,6 @@ if __name__ == '__main__':
     model = BiLSTMCRF(embedding=None, parameters=parameters, lstm_layer=2, padding_idx=parameters['tokenizer'].vocab['[PAD]'], output_dim=len(dh.target2idx), hidden_dim=128).cuda()
 
     # loss_function = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([pos_w]).cuda())
-    parameters['loss_func'] = torch.nn.CrossEntropyLoss(ignore_index=parameters['tokenizer'].vocab['[PAD]'])
     parameters['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=parameters['learning_rate'])
     parameters['model'] = model
     # training(parameters)

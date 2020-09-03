@@ -97,15 +97,14 @@ def prediction_demo(parameters):
     test_iter = parameters['test_iter']
     test_iter.init_epoch()
     dh = parameters['data_helper']
+
     for test_batch in iter(test_iter):
         x = test_batch.input.cuda()
         pred = model.forward(x).transpose(1,2)
         pred = torch.argmax(pred, -1).cpu().data.numpy().tolist()
         text_x = x.cpu().data.numpy().tolist()
-
         result = dh.tokens2text(text_x, pred)
         print(result)
-
 
 def save(m, info, path):
     torch.save(info, path+'best_model.info')
