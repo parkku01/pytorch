@@ -38,10 +38,11 @@ def training(parameters):
         for train_batch in iter(train_iter):
             step += 1
             model.train()
-            x = train_batch.input.cuda()
+            x, x_len = train_batch.input
+            x = x.cuda()
             y = train_batch.target.cuda()
             model.zero_grad()
-            pred = model.forward(x)
+            pred = model.forward(x, x_len)
 
             loss = loss_function(pred, y)
             losses.append(loss.cpu().data.numpy())
@@ -53,9 +54,10 @@ def training(parameters):
                 model.zero_grad()
                 val_loss = []
                 for val_batch in iter(val_iter):
-                    val_x = val_batch.input.cuda()
+                    val_x, val_x_len = val_batch.input
+                    val_x = val_x.cuda()
                     val_y = val_batch.target.cuda()
-                    val_pred = model.forward(val_x)
+                    val_pred = model.forward(val_x, val_x_len)
                     val_loss.append(loss_function(val_pred, val_y).cpu().data.numpy())
                 val_record.append({'step': step, 'loss': np.mean(val_loss)})
                 print('epcoh {:02} - step {:06} - train_loss {:.4f} - val_loss {:.4f} '.format(
@@ -76,9 +78,10 @@ def prediction(parameters):
     total = 0
     correct = 0
     for test_batch in iter(test_iter):
-        test_x = test_batch.input.cuda()
+        test_x, test_x_len = test_batch.input
+        test_x = test_x.cuda()
         true = test_batch.target.data.numpy().tolist()
-        pred = model.forward(test_x).transpose(1,2)
+        pred = model.forward(test_x, test_x_len).transpose(1,2)
         pred = torch.argmax(pred, -1).cpu().data.numpy().tolist()
         for minibatch_p, minibatch_t in zip(pred, true):
             for p, t in zip(minibatch_p, minibatch_t):
@@ -99,14 +102,16 @@ def prediction_demo(parameters):
     dh = parameters['data_helper']
 
     for test_batch in iter(test_iter):
-        x = test_batch.input.cuda()
-        pred = model.forward(x).transpose(1,2)
+        test_x, test_x_len = test_batch.input
+        test_x = test_x.cuda()
+        pred = model.forward(test_x, test_x_len).transpose(1,2)
         pred = torch.argmax(pred, -1).cpu().data.numpy().tolist()
         true = test_batch.target.data.numpy().tolist()
         print(true)
         print(pred)
-        text_x = x.cpu().data.numpy().tolist()
-        result = dh.tokens2text(text_x, pred)
+        test_x = test_x.cpu().data.numpy().tolist()
+        print(test_x)
+        result = dh.tokens2text(test_x, pred)
         print(result)
 
 def save(m, info, path):
@@ -126,15 +131,15 @@ if __name__ == '__main__':
         'data_helper': dh,
         'embedding_dim': 100,
         'tokenizer': dh.tokenizer,
-        'epoch': 20,
+        'epoch': 1000,
         'model': None,
-        'eval_every': 2,
+        'eval_every': 8,
         'loss_func': None,
         'optimizer': None,
         'train_iter': None,
         'val_iter': None,
         'test_iter': None,
-        'early_stop': 3,
+        'early_stop': 20,
         'warmup_epoch': 2,
         'batch_size': 2,
         'learning_rate': 1e-3,
@@ -162,6 +167,6 @@ if __name__ == '__main__':
     parameters['loss_func'] = torch.nn.CrossEntropyLoss(ignore_index=parameters['tokenizer'].vocab['[PAD]'])
     parameters['optimizer'] = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=parameters['learning_rate'])
     parameters['model'] = model
-    # training(parameters)
+    training(parameters)
     # prediction(parameters)
-    prediction_demo(parameters)
+    # prediction_demo(parameters)
